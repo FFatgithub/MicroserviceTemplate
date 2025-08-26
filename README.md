@@ -2,8 +2,6 @@
 
 # 🧱 Microservice Template – Unternehmens‑Vorlage & Bewerbungsbeispiel
 
-*Ein schlankes, technologie‑agnostisches Template, das du als Portfolio‑Projekt deinen Bewerbungen beilegen kannst und das Firmen später als einheitliche Basis für Microservices nutzen.*
-
 <p align="center">
   <!-- Badges: OWNER/REPO & Registries ersetzen -->
   <a href="https://github.com/OWNER/REPO/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/OWNER/REPO/ci.yml?branch=main"></a>
@@ -14,7 +12,7 @@
 
 > **Wofür?**
 >
-> * **Bewerbung**: Zeigt Arbeitsweise, Qualitätsanspruch & DevOps‑Denken.
+> * **Bewerbung**: Zeigt Arbeitsweise, Qualitätsanspruch & DevOps‑Denken. Zu diesem Zeitpunkt noch in Arbeit – es fehlen Tests (UI), Authentication und weiteres.
 > * **Unternehmen**: Startpunkt für *neue* Microservices mit gemeinsamen Standards.
 
 ---
@@ -27,15 +25,12 @@
 * [Konventionen](#konventionen)
 * [API & Verträge](#api--verträge)
 * [Lokale Entwicklung](#lokale-entwicklung)
-* [Makefile‑Befehle](#makefile-befehle)
 * [CI/CD](#cicd)
 * [Qualitätssicherung](#qualitätssicherung)
 * [Sicherheit](#sicherheit)
 * [Release & Versionierung](#release--versionierung)
-* [Template‑Variablen](#template-variablen)
 * [Checkliste: Neuer Service aus Template](#checkliste-neuer-service-aus-template)
 * [Roadmap](#roadmap)
-* [Beitragen](#beitragen)
 * [Lizenz](#lizenz)
 * [Kontakt](#kontakt)
 * [FAQ](#faq)
@@ -48,26 +43,29 @@ Dieses Repository ist eine **produktive Vorlage** für Microservices. Es erzwing
 
 **Design‑Prinzipien**
 
-* 12‑Factor App, **API‑first**, KISS
-* Security‑by‑default (least privilege, immutables)
-* Observability: Logs, Metriken, Traces (OTel)
+* **API‑first**, KISS
+* Einfache, kleine Services – leicht zu pflegen
 * Automatisierung: Build, Test, Release, Infra as Code
 * Reproduzierbarkeit: Container, deterministische Builds
 
-**Referenz‑Endpoints (sollten jeder Service bieten)**
+**Referenz‑Endpoints (sollte jeder Service perspektivisch bieten)**
 
-* `GET /health` (liveness), `GET /ready` (readiness)
-* `GET /metrics` (Prometheus)
-* `GET /docs` (Swagger UI), `GET /info` (Build‑Infos)
+* `GET /docs` (Swagger UI) – **aktuell vorhanden**
+* `GET /health` (Liveness) – *geplant*
+* `GET /ready` (Readiness) – *geplant*
+* `GET /metrics` (Prometheus) – *geplant*
+* `GET /info` (Build‑Infos) – *geplant*
 
 Mermaid‑Skizze (Beispiel):
 
 ```mermaid
 flowchart LR
-  Client -->|REST| API[Template Service]
+  Frontend -->|RESTful API| API[Kunden‑Service]
+  Frontend -->|RESTful API| API2[Katalog‑Service]
+  Frontend -->|RESTful API| API3[Bestell‑Service]
   API --> DB[(Persistenz)]
-  API --> MQ[(Queue/Broker)]
-  API --> Ext[(Externer Dienst)]
+  API2 --> DB[(Persistenz)]
+  API3 --> DB[(Persistenz)]
 ```
 
 ## Schnellstart (als Vorlage nutzen)
@@ -99,19 +97,16 @@ rg -uu "OWNER/REPO|SERVICE_NAME|ORG_NAME" -nl | xargs sed -i "" \
 
 ```text
 .
-├─ .github/workflows/ci.yml        # Build, Lint, Test, Scan, Build Image
-├─ openapi/openapi.yaml            # API‑Vertrag (Single Source of Truth)
-├─ ops/docker/Dockerfile           # Referenz‑Dockerfile
-├─ ops/docker-compose.dev.yml      # Dev‑Stack (Service + DB + Tools)
-├─ docs/architecture.md            # ADRs, Diagramme
-├─ src/                            # Service‑Code (Sprache/Framework frei)
-├─ tests/                          # Unit/Integration
-├─ Makefile                        # Einheitliche Entwickler‑Kommandos
-├─ .env.example                    # Konfigurations‑Beispiel
-├─ CODE_OF_CONDUCT.md
-├─ CONTRIBUTING.md
-├─ LICENSE
-└─ README.md
+├─ Properties/                         # .NET-Projekt-/Laufzeitkonfig (z. B. launchSettings.json, AssemblyInfo)
+├─ Controllers/                        # REST-Endpoints, nur Orchestrierung, keine Geschäftslogik
+├─ Data/                               # Persistenzschicht: DbContext/Repos/Migrations, Zugriff auf die DB bündeln
+├─ Handlers/                           # Use-Case-/MediatR-Handler, kapselt Anwendungsfälle. Nur hier findet die Logik statt.
+├─ Models/                             # Nur DTOs, alle Models sind ohne Logik.
+├─ Service/                            # Geschäftslogik (Interfaces + Implementierungen), wiederverwendbar/ später dann testbar.
+├─ appsettings.json                    # Konfiguration (per ENV übersteuerbar), keine Secrets hier ablegen.
+├─ MicroserviceTemplate.http           # Beispiel-HTTP-Requests (VS/VSCode REST Client) zum manuellen Testen.
+├─ Program.cs                          # Registriert Service, startet die App.
+├─ stylecop.json                       # Beinhaltet Informationen über die Firma, welche als Head in jeder Datei dienen.
 ```
 
 ## Konventionen
@@ -132,7 +127,18 @@ Der API‑Vertrag liegt unter `openapi/openapi.yaml` und wird in CI validiert. S
 
 ## Lokale Entwicklung
 
-**Docker Compose (Dev‑Stack)**
+**.NET (ohne Container)**
+
+```bash
+# Wiederherstellen, Build, Start
+dotnet restore
+dotnet build -c Debug
+dotnet run --project ./ # ggf. Projektpfad anpassen
+
+# Swagger UI erreichbar unter /docs (Dev)
+```
+
+**Docker Compose (Dev‑Stack, optional)**
 
 ```yaml
 # ops/docker-compose.dev.yml
@@ -199,11 +205,11 @@ migrate:    ## DB‑Migrationen anwenden
 
 ## CI/CD
 
-* **CI (Push/PR)**: Lint → Test → Coverage‑Check (≥ 80 %) → SCA/SAST → Docker Build → Image Scan → Artefakte.
+* **CI (Push/PR)**: Restore → Build → Tests → (optional) Coverage → Docker Build → Image Scan → Artefakte.
 * **CD (Release)**: Tag `vX.Y.Z` → Build & Push `REGISTRY/IMAGE:{vX.Y.Z,sha,latest}` → optional Deployment (ArgoCD/Helm/Kustomize).
-* **Empfohlene Checks**: `trivy`/`grype` (Images), `gitleaks` (Secrets), `dependabot` (Deps).
+* **Empfohlene Checks**: Container‑Scan (`trivy`/`grype`), Secret‑Scan (`gitleaks`), Dependency‑Updates (`dependabot`).
 
-*Minimales GitHub‑Actions‑Gerüst (`.github/workflows/ci.yml`):*
+*Minimales GitHub‑Actions‑Gerüst für .NET (`.github/workflows/ci.yml`):*
 
 ```yaml
 name: ci
@@ -213,27 +219,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - run: npm test -- --coverage
-      - run: npm run lint
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Test
+        run: dotnet test --no-build -c Release
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }} }
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: ops/docker/Dockerfile
+          file: Dockerfile # ggf. anpassen
           push: false
           tags: ghcr.io/ORG_NAME/SERVICE_NAME:ci
 ```
 
 ## Qualitätssicherung
 
-* Coverage ≥ **80 %** (Unit), kritische Pfade mit Integrationstests
-* Lint/Format: ESLint/Prettier **oder** Ruff/Black (stack‑abhängig)
-* Pre‑commit Hooks: Lint, Tests, Secret‑Scan
+* Coverage ≥ **80 %** (Unit) – sobald Tests vorhanden
+* .NET Analyzer + **StyleCop** (vorhanden), `dotnet format`
+* Pre‑commit Hooks: Build, Tests, Secret‑Scan
 * PR‑Template mit Akzeptanzkriterien & Screenshots/Logs
 
 ## Sicherheit
@@ -272,14 +285,13 @@ jobs:
 
 ## Roadmap
 
-* [ ] Beispiel‑Implementierung: Node.js **oder** Python (wählbar)
+* [ ] Beispiel‑Implementierung: ASP.NET Core (Minimal API) mit Health/Ready/Metrics/Docs
 * [ ] Helm‑Chart & Kustomize‑Overlays
 * [ ] Observability‑Dashboard (Grafana)
 * [ ] Terraform‑Modul (Shared Infra)
-
-## Beitragen
-
-PRs willkommen! Bitte lies [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+* [ ] Sicherheit
+* [ ] Tests
+* [ ] Authentication
 
 ## Lizenz
 
@@ -287,7 +299,7 @@ MIT – siehe [`LICENSE`](./LICENSE).
 
 ## Kontakt
 
-**MAINTAINER\_NAME** – `EMAIL_OR_SOCIAL`
+**MAINTAINER\_NAME** – `bewerbung@frankfriedrich.eu`
 
 ## FAQ
 
